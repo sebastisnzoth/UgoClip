@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">HUGO Clip</string>
+    <string name="voice_service_title">HUGO está escutando</string>
+    <string name="voice_service_desc">Microfone ativo • Modo HUGO ligado</string>
+    <string name="action_pause">Pausar</string>
+    <string name="action_resume">Retomar</string>
+    <string name="action_stop">Encerrar</string>
+    <string name="action_speak">Falar</string>
+</resources>

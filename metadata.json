@@ -1,0 +1,7 @@
+{
+  "name": "HUGO Clip",
+  "description": "Assistente de voz pessoal para Android e futuro wearable — seu secretário de voz inteligente.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

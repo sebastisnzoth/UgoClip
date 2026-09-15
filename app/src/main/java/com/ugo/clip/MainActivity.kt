@@ -1,17 +1,20 @@
 package com.ugo.clip
 
 import android.Manifest
-import android.content.BroadcastReceiver
-import android.content.Context
+import android.app.Activity
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.speech.RecognizerIntent
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,217 +22,414 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Watch
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.ugo.clip.voice.HugoVoiceService
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ugo.clip.core.voice.HugoVoiceState
+import com.ugo.clip.ui.HugoViewModel
+import com.ugo.clip.ui.components.WearableClipCard
+import com.ugo.clip.ui.screens.AgendaScreen
+import com.ugo.clip.ui.screens.HistoryScreen
+import com.ugo.clip.ui.screens.HomeScreen
+import com.ugo.clip.ui.screens.MemoryScreen
+import com.ugo.clip.ui.theme.HugoCyanPrimary
+import com.ugo.clip.ui.theme.HugoGreenActive
+import com.ugo.clip.ui.theme.HugoObsidianBg
+import com.ugo.clip.ui.theme.HugoRedSentinel
+import com.ugo.clip.ui.theme.HugoSlateCard
+import com.ugo.clip.ui.theme.HugoSlateSurface
+import com.ugo.clip.ui.theme.HugoVioletSecondary
+import com.ugo.clip.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
 
-    private var serviceState by mutableStateOf("DESATIVADO")
-    private var lastTranscript by mutableStateOf("Ainda não ouvi nenhum comando.")
-    private var infoMessage by mutableStateOf("Ative o Modo HUGO e fale normalmente.")
-    private var isRunning by mutableStateOf(false)
-
-    private val statusReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != HugoVoiceService.ACTION_STATUS) return
-            intent.getStringExtra(HugoVoiceService.EXTRA_STATE)?.let { state ->
-                serviceState = state
-                isRunning = state != "DESATIVADO" && state != "ENCERRADO" && state != "ERRO"
-            }
-            intent.getStringExtra(HugoVoiceService.EXTRA_TRANSCRIPT)?.let {
-                if (it.isNotBlank()) lastTranscript = it
-            }
-            intent.getStringExtra(HugoVoiceService.EXTRA_MESSAGE)?.let {
-                if (it.isNotBlank()) infoMessage = it
-            }
-        }
-    }
-
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { result ->
-        val audioGranted = result[Manifest.permission.RECORD_AUDIO] == true ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-
-        if (audioGranted) {
-            startHugo()
-        } else {
-            infoMessage = "HUGO precisa da permissão de microfone para escutar seus comandos."
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Text(
-                            text = "HUGO",
-                            style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.Black
-                        )
-                        Text(
-                            text = "Seu secretário de voz",
-                            style = MaterialTheme.typography.titleMedium
-                        )
+            MyApplicationTheme {
+                val viewModel: HugoViewModel = viewModel()
+                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                val notes by viewModel.notes.collectAsStateWithLifecycle()
+                val tasks by viewModel.tasks.collectAsStateWithLifecycle()
+                val reminders by viewModel.reminders.collectAsStateWithLifecycle()
+                val memories by viewModel.memories.collectAsStateWithLifecycle()
+                val commandLogs by viewModel.commandLogs.collectAsStateWithLifecycle()
+                val geminiInteractions by viewModel.geminiInteractions.collectAsStateWithLifecycle()
 
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        ) {
-                            Column(modifier = Modifier.padding(20.dp)) {
-                                Text("ESTADO", style = MaterialTheme.typography.labelLarge)
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    serviceState,
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                Text(infoMessage)
-                            }
-                        }
+                val context = LocalContext.current
+                var showClipModal by remember { mutableStateOf(false) }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Button(
-                                onClick = { ensurePermissionsAndStart() },
-                                enabled = !isRunning,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Ativar HUGO")
-                            }
-                            OutlinedButton(
-                                onClick = { stopHugo() },
-                                enabled = isRunning,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Encerrar")
-                            }
-                        }
+                // Permission Launcher
+                val permissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestMultiplePermissions()
+                ) { permissions ->
+                    val recordGranted = permissions[Manifest.permission.RECORD_AUDIO] == true
+                    if (!recordGranted) {
+                        Toast.makeText(
+                            context,
+                            "Permissão de microfone necessária para o Modo HUGO.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
 
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(20.dp)) {
-                                Text("ÚLTIMO COMANDO", style = MaterialTheme.typography.labelLarge)
-                                Spacer(Modifier.height(8.dp))
-                                Text(lastTranscript, style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
-
-                        Text(
-                            "Teste agora",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text("• Hugo, abre o YouTube")
-                        Text("• Hugo, abre o Maps para Canasvieiras")
-                        Text("• Hugo, anota comprar dois disjuntores")
-                        Text("• Hugo, lembra que deixei a furadeira no armário azul")
-                        Text("• Hugo, onde deixei a furadeira?")
-                        Text("• Hugo, prepara uma mensagem dizendo que chego às oito")
-                        Text("• Hugo, lembra de comprar pão amanhã às 9")
-                        Text("• Hugo, o que tenho amanhã?")
-                        Text("• Hugo, pausa")
-                        Text("• Hugo, encerra")
-
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(20.dp)) {
-                                Text(
-                                    "Privacidade",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    "Quando o Modo HUGO está ativo, o Android mantém uma notificação visível indicando o uso do microfone. O MVP não grava arquivos de áudio."
-                                )
-                            }
+                // Voice Recognition Launcher using Android SpeechRecognizer Intent API
+                val speechRecognizerLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    if (result.resultCode == Activity.RESULT_OK) {
+                        val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                        val spokenText = matches?.firstOrNull()?.trim()
+                        if (!spokenText.isNullOrBlank()) {
+                            viewModel.sendVoiceCommand(spokenText)
                         }
                     }
                 }
+
+                val onStartVoiceInput: () -> Unit = {
+                    val hasAudio = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                    if (!hasAudio) {
+                        permissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+                    } else {
+                        // Launch native Speech Recognition dialog for instant dictation
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR")
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Fale com o HUGO Clip...")
+                        }
+                        try {
+                            speechRecognizerLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Reconhecimento de voz: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                            // Fallback: start Hugo service listening mode
+                            viewModel.startHugoMode()
+                        }
+                    }
+                }
+
+                // Check permissions on start
+                LaunchedEffect(Unit) {
+                    val permissionsToRequest = mutableListOf(Manifest.permission.RECORD_AUDIO)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    val missing = permissionsToRequest.filter {
+                        ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                    }
+                    if (missing.isNotEmpty()) {
+                        permissionLauncher.launch(missing.toTypedArray())
+                    }
+                }
+
+                HugoAppContent(
+                    viewModel = viewModel,
+                    uiState = uiState,
+                    notes = notes,
+                    tasks = tasks,
+                    reminders = reminders,
+                    memories = memories,
+                    commandLogs = commandLogs,
+                    geminiInteractions = geminiInteractions,
+                    showClipModal = showClipModal,
+                    onToggleClipModal = { showClipModal = !showClipModal },
+                    onStartVoiceInput = onStartVoiceInput,
+                    onRequestPermissions = {
+                        val permissionsToRequest = mutableListOf(Manifest.permission.RECORD_AUDIO)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        permissionLauncher.launch(permissionsToRequest.toTypedArray())
+                    }
+                )
             }
         }
     }
+}
 
-    override fun onStart() {
-        super.onStart()
-        val filter = IntentFilter(HugoVoiceService.ACTION_STATUS)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(statusReceiver, filter, RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(statusReceiver, filter)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HugoAppContent(
+    viewModel: HugoViewModel,
+    uiState: com.ugo.clip.core.voice.HugoUiState,
+    notes: List<com.ugo.clip.data.model.NoteEntity>,
+    tasks: List<com.ugo.clip.data.model.TaskEntity>,
+    reminders: List<com.ugo.clip.data.model.ReminderEntity>,
+    memories: List<com.ugo.clip.data.model.MemoryFactEntity>,
+    commandLogs: List<com.ugo.clip.data.model.CommandLogEntity>,
+    geminiInteractions: List<com.ugo.clip.data.model.GeminiInteractionEntity>,
+    showClipModal: Boolean,
+    onToggleClipModal: () -> Unit,
+    onStartVoiceInput: () -> Unit,
+    onRequestPermissions: () -> Unit
+) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = HugoObsidianBg,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "HUGO",
+                                    color = Color.White,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 1.sp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(HugoCyanPrimary.copy(alpha = 0.2f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "CLIP",
+                                        color = HugoCyanPrimary,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "MD MAESTRO • SECRETÁRIO DE VOZ",
+                                color = Color(0xFF64748B),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    // Wearable Clip Hardware Trigger button
+                    IconButton(
+                        onClick = onToggleClipModal,
+                        modifier = Modifier.testTag("clip_modal_trigger")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Watch,
+                            contentDescription = "Clip Wearable",
+                            tint = if (uiState.isBleClipConnected) HugoCyanPrimary else Color.Gray,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    // Live mic indicator
+                    val statusDotColor = when (uiState.serviceState) {
+                        HugoVoiceState.LISTENING -> HugoCyanPrimary
+                        HugoVoiceState.PROCESSING -> HugoVioletSecondary
+                        HugoVoiceState.SPEAKING -> Color(0xFFFF4081)
+                        HugoVoiceState.PAUSED -> Color(0xFFFFAB00)
+                        HugoVoiceState.OFF -> Color(0xFF475569)
+                        HugoVoiceState.ERROR -> HugoRedSentinel
+                        HugoVoiceState.STARTING -> HugoCyanPrimary
+                    }
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 16.dp)
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(statusDotColor)
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = HugoSlateSurface)
+            )
+        },
+        bottomBar = {
+            NavigationBar(
+                containerColor = HugoSlateSurface,
+                contentColor = HugoCyanPrimary
+            ) {
+                NavigationBarItem(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "Voz"
+                        )
+                    },
+                    label = { Text("Voz", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = HugoCyanPrimary,
+                        selectedTextColor = HugoCyanPrimary,
+                        indicatorColor = HugoSlateCard,
+                        unselectedIconColor = Color(0xFF64748B),
+                        unselectedTextColor = Color(0xFF64748B)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Psychology,
+                            contentDescription = "Memória"
+                        )
+                    },
+                    label = { Text("Memória", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = HugoCyanPrimary,
+                        selectedTextColor = HugoCyanPrimary,
+                        indicatorColor = HugoSlateCard,
+                        unselectedIconColor = Color(0xFF64748B),
+                        unselectedTextColor = Color(0xFF64748B)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.CalendarMonth,
+                            contentDescription = "Agenda"
+                        )
+                    },
+                    label = { Text("Agenda", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = HugoCyanPrimary,
+                        selectedTextColor = HugoCyanPrimary,
+                        indicatorColor = HugoSlateCard,
+                        unselectedIconColor = Color(0xFF64748B),
+                        unselectedTextColor = Color(0xFF64748B)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3 },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = "Histórico"
+                        )
+                    },
+                    label = { Text("Histórico", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = HugoCyanPrimary,
+                        selectedTextColor = HugoCyanPrimary,
+                        indicatorColor = HugoSlateCard,
+                        unselectedIconColor = Color(0xFF64748B),
+                        unselectedTextColor = Color(0xFF64748B)
+                    )
+                )
+            }
         }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // Optional Wearable Clip hardware banner / drawer
+            if (showClipModal) {
+                WearableClipCard(
+                    isConnected = uiState.isBleClipConnected,
+                    batteryPercent = uiState.clipBatteryPercent,
+                    voiceState = uiState.serviceState,
+                    onToggleConnection = { viewModel.toggleBleClip() },
+                    onSingleTap = { viewModel.clipButtonSingleTap() },
+                    onDoubleTap = { viewModel.clipButtonDoubleTap() },
+                    onLongPress = { viewModel.clipButtonLongPress() },
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
 
-        val prefs = getSharedPreferences(HugoVoiceService.PREFS_NAME, MODE_PRIVATE)
-        if (prefs.getBoolean(HugoVoiceService.PREF_RUNNING, false)) {
-            serviceState = prefs.getString(HugoVoiceService.PREF_STATE, "ESCUTANDO") ?: "ESCUTANDO"
-            isRunning = true
+            when (selectedTab) {
+                0 -> HomeScreen(
+                    uiState = uiState,
+                    todayReminders = reminders,
+                    todayTasks = tasks,
+                    onToggleHugoMode = {
+                        onRequestPermissions()
+                        viewModel.startHugoMode()
+                    },
+                    onPauseHugo = { viewModel.pauseHugo() },
+                    onResumeHugo = { viewModel.resumeHugo() },
+                    onStopHugo = { viewModel.stopHugoMode() },
+                    onSendCommand = { viewModel.sendVoiceCommand(it) },
+                    onConfirmSentinel = { viewModel.confirmSentinel() },
+                    onCancelSentinel = { viewModel.cancelSentinel() },
+                    onToggleTask = { viewModel.toggleTask(it) },
+                    onToggleReminder = { viewModel.toggleReminder(it) },
+                    onStartVoiceInput = onStartVoiceInput,
+                    onSummarizeTranscript = { viewModel.summarizeCurrentTranscript() },
+                    onAnalyzeTranscript = { viewModel.analyzeCurrentTranscript() },
+                    onClearGeminiAnalysis = { viewModel.clearGeminiAnalysis() },
+                    onSaveSummaryAsNote = { summary ->
+                        viewModel.addNote("Resumo Gemini", summary)
+                    }
+                )
+                1 -> MemoryScreen(
+                    memories = memories,
+                    notes = notes,
+                    onAddMemory = { subject, value -> viewModel.addMemory(subject, value) },
+                    onDeleteMemory = { viewModel.deleteMemory(it) },
+                    onAddNote = { title, content -> viewModel.addNote(title, content) },
+                    onDeleteNote = { viewModel.deleteNote(it) }
+                )
+                2 -> AgendaScreen(
+                    reminders = reminders,
+                    tasks = tasks,
+                    onToggleReminder = { viewModel.toggleReminder(it) },
+                    onDeleteReminder = { viewModel.deleteReminder(it) },
+                    onAddReminder = { title, timeDesc -> viewModel.addReminder(title, timeDesc) },
+                    onToggleTask = { viewModel.toggleTask(it) },
+                    onDeleteTask = { viewModel.deleteTask(it) },
+                    onAddTask = { viewModel.addTask(it) }
+                )
+                3 -> HistoryScreen(
+                    commandLogs = commandLogs,
+                    geminiInteractions = geminiInteractions,
+                    onClearHistory = { viewModel.clearCommandLogs() },
+                    onClearGeminiInteractions = { viewModel.clearGeminiInteractions() },
+                    onDeleteGeminiInteraction = { viewModel.deleteGeminiInteraction(it) },
+                    onSaveToNotes = { title, content -> viewModel.addNote(title, content) }
+                )
+            }
         }
-    }
-
-    override fun onStop() {
-        runCatching { unregisterReceiver(statusReceiver) }
-        super.onStop()
-    }
-
-    private fun ensurePermissionsAndStart() {
-        val audioGranted = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (audioGranted) {
-            startHugo()
-            return
-        }
-
-        val permissions = mutableListOf(Manifest.permission.RECORD_AUDIO)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions += Manifest.permission.POST_NOTIFICATIONS
-        }
-        permissionLauncher.launch(permissions.toTypedArray())
-    }
-
-    private fun startHugo() {
-        val intent = Intent(this, HugoVoiceService::class.java).apply {
-            action = HugoVoiceService.ACTION_START
-        }
-        ContextCompat.startForegroundService(this, intent)
-        serviceState = "INICIANDO"
-        isRunning = true
-        infoMessage = "Iniciando microfone e reconhecimento de voz…"
-    }
-
-    private fun stopHugo() {
-        startService(Intent(this, HugoVoiceService::class.java).apply {
-            action = HugoVoiceService.ACTION_STOP
-        })
     }
 }
